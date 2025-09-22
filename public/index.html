@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>EditPDFData — Edit PDF Metadata</title>
+
+<!-- pdf-lib in browser -->
+<script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+
+<style>
+  :root{
+    --blue: #4a90e2;
+    --purple: #6a5acd;
+    --yellow: #ffdd57;
+    --bg: #f4f7fb;
+    --muted: #6b7280;
+  }
+  *{box-sizing:border-box}
+  body{font-family:Inter,Arial,Helvetica,sans-serif;margin:0;background:var(--bg);padding:28px}
+  .wrap{max-width:980px;margin:0 auto}
+  .card{background:#fff;border-radius:12px;padding:22px;box-shadow:0 10px 30px rgba(16,24,40,0.06)}
+  header{display:flex;align-items:center;gap:16px;margin-bottom:12px}
+  .logo-blob{width:56px;height:56px;border-radius:10px;background:linear-gradient(90deg,var(--blue),var(--purple));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700}
+  h1{margin:0;color:var(--blue);font-size:20px}
+  p.lead{margin:0;color:var(--muted);font-size:14px}
+
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:18px}
+  label{display:block;font-weight:600;margin-bottom:6px;color:#1f2937}
+  input[type="text"], input[type="datetime-local"], input[type="file"]{
+    width:100%;padding:10px;border-radius:8px;border:1px solid #e6eef8;background:#fff;
+  }
+
+  .actions{display:flex;gap:12px;align-items:center;margin-top:18px;flex-wrap:wrap}
+  .btn{
+    background:linear-gradient(90deg,var(--blue),var(--purple));
+    color:#fff;padding:10px 18px;border-radius:12px;border:none;font-weight:700;cursor:pointer;
+    transition: all .12s ease; box-shadow:0 8px 22px rgba(16,24,40,0.08)
+  }
+  .btn:hover { color: var(--yellow); transform: translateY(-3px) }
+  .muted{color:var(--muted);font-size:13px}
+
+  iframe{width:100%;height:560px;border-radius:10px;border:1px solid #e6eef8;margin-top:18px}
+
+  .props{margin-top:18px;padding:14px;border-radius:10px;background:#f9fbff;border:1px solid #eef6ff}
+  .prop{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed rgba(0,0,0,0.03)}
+  .prop:last-child{border-bottom:none}
+  .label-muted{color:#475569;font-weight:600}
+  @media (max-width:760px){ .grid{grid-template-columns:1fr} iframe{height:420px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <header>
+      <div class="logo-blob">EP</div>
+      <div>
+        <h1>EditPDFData — Edit PDF Metadata</h1>
+        <p class="lead">Fast, safe edits — set title, author, subject, keywords and precise creation/modification date & time.</p>
+      </div>
+    </header>
+
+    <div>
+      <label>Choose PDF file</label>
+      <input id="fileInput" type="file" accept="application/pdf" />
+      <div id="fileInfo" class="muted" style="margin-top:8px"></div>
+    </div>
+
+    <div class="grid" style="margin-top:14px">
+      <div>
+        <label>Title</label>
+        <input id="title" type="text" placeholder="Document title (optional)"/>
+      </div>
+      <div>
+        <label>Author</label>
+        <input id="author" type="text" placeholder="Author (optional)"/>
+      </div>
+      <div>
+        <label>Subject</label>
+        <input id="subject" type="text" placeholder="Subject (optional)"/>
+      </div>
+      <div>
+        <label>Keywords (comma separated)</label>
+        <input id="keywords" type="text" placeholder="keyword1, keyword2"/>
+      </div>
+      <div>
+        <label>Creation date & time (optional)</label>
+        <input id="creationDate" type="datetime-local"/>
+      </div>
+      <div>
+        <label>Modification date & time (optional)</label>
+        <input id="modDate" type="datetime-local"/>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="previewBtn" class="btn">Preview</button>
+      <button id="downloadBtn" class="btn">Download File</button>
+      <div id="status" class="muted" style="margin-left:10px"></div>
+    </div>
+
+    <iframe id="previewFrame" title="PDF preview"></iframe>
+
+    <div id="props" class="props" style="display:none;">
+      <div class="prop"><div class="label-muted">File name</div><div id="p_name"></div></div>
+      <div class="prop"><div class="label-muted">File size</div><div id="p_size"></div></div>
+      <div class="prop"><div class="label-muted">Title</div><div id="p_title"></div></div>
+      <div class="prop"><div class="label-muted">Author</div><div id="p_author"></div></div>
+      <div class="prop"><div class="label-muted">Subject</div><div id="p_subject"></div></div>
+      <div class="prop"><div class="label-muted">Keywords</div><div id="p_keywords"></div></div>
+      <div class="prop"><div class="label-muted">Created on</div><div id="p_created"></div></div>
+      <div class="prop"><div class="label-muted">Modified on</div><div id="p_modified"></div></div>
+      <div class="prop"><div class="label-muted">Pages</div><div id="p_pages"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(async () => {
+  const fileInput = document.getElementById('fileInput');
+  const status = document.getElementById('status');
+  const previewBtn = document.getElementById('previewBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const previewFrame = document.getElementById('previewFrame');
+  const fileInfo = document.getElementById('fileInfo');
+  const propsBox = document.getElementById('props');
+
+  const titleEl = document.getElementById('title');
+  const authorEl = document.getElementById('author');
+  const subjectEl = document.getElementById('subject');
+  const keywordsEl = document.getElementById('keywords');
+  const creationEl = document.getElementById('creationDate');
+  const modEl = document.getElementById('modDate');
+
+  const p_name = document.getElementById('p_name');
+  const p_size = document.getElementById('p_size');
+  const p_title = document.getElementById('p_title');
+  const p_author = document.getElementById('p_author');
+  const p_subject = document.getElementById('p_subject');
+  const p_keywords = document.getElementById('p_keywords');
+  const p_created = document.getElementById('p_created');
+  const p_modified = document.getElementById('p_modified');
+  const p_pages = document.getElementById('p_pages');
+
+  let currentFile = null;
+
+  // Convert JS Date -> "YYYY-MM-DDTHH:mm" for datetime-local
+  function toLocalDateTimeValue(d) {
+    if (!d) return "";
+    const date = new Date(d);
+    const pad = n => String(n).padStart(2,'0');
+    return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  // --- NEW: make sure we always send ISO string to server ---
+  function normalizeDateInput(value) {
+    if (!value) return "";
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return "";
+    return d.toISOString(); // safe for server
+  }
+
+  fileInput.addEventListener('change', async (e) => {
+    propsBox.style.display = 'none';
+    previewFrame.src = '';
+    status.textContent = '';
+    if (!e.target.files.length) { currentFile = null; fileInfo.textContent=''; return; }
+    currentFile = e.target.files[0];
+    fileInfo.textContent = `${currentFile.name} — ${(currentFile.size/1024).toFixed(1)} KB`;
+
+    const arrayBuffer = await currentFile.arrayBuffer();
+    try {
+      const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+      titleEl.value = pdfDoc.getTitle() || '';
+      authorEl.value = pdfDoc.getAuthor() || '';
+      subjectEl.value = pdfDoc.getSubject() || '';
+      const kw = pdfDoc.getKeywords();
+      keywordsEl.value = (kw && kw.length) ? kw.join(", ") : '';
+      const created = pdfDoc.getCreationDate();
+      const modified = pdfDoc.getModificationDate();
+      creationEl.value = created ? toLocalDateTimeValue(created) : '';
+      modEl.value = modified ? toLocalDateTimeValue(modified) : '';
+    } catch {
+      titleEl.value = authorEl.value = subjectEl.value = keywordsEl.value = '';
+      creationEl.value = modEl.value = '';
+    }
+  });
+
+  function buildFormData() {
+    if (!currentFile) return null;
+    const fd = new FormData();
+    fd.append('pdf', currentFile, currentFile.name);
+    if (titleEl.value.trim()) fd.append('title', titleEl.value.trim());
+    if (authorEl.value.trim()) fd.append('author', authorEl.value.trim());
+    if (subjectEl.value.trim()) fd.append('subject', subjectEl.value.trim());
+    if (keywordsEl.value.trim()) fd.append('keywords', keywordsEl.value.trim());
+    if (creationEl.value) fd.append('creationDate', normalizeDateInput(creationEl.value));
+    if (modEl.value) fd.append('modificationDate', normalizeDateInput(modEl.value));
+    return fd;
+  }
+
+  async function extractPropsFromBlob(blob) {
+    try {
+      const arrayBuffer = await blob.arrayBuffer();
+      const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+      return {
+        title: pdfDoc.getTitle() || 'Not available',
+        author: pdfDoc.getAuthor() || 'Not available',
+        subject: pdfDoc.getSubject() || 'Not available',
+        keywords: (pdfDoc.getKeywords()||[]).join(", ") || 'Not available',
+        created: pdfDoc.getCreationDate() ? new Date(pdfDoc.getCreationDate()).toLocaleString() : 'Not available',
+        modified: pdfDoc.getModificationDate() ? new Date(pdfDoc.getModificationDate()).toLocaleString() : 'Not available',
+        pages: pdfDoc.getPages().length
+      };
+    } catch { return null; }
+  }
+
+  previewBtn.addEventListener('click', async () => {
+    if (!currentFile) return alert("Please choose a PDF file first.");
+    status.textContent = 'Processing preview…';
+    const fd = buildFormData();
+    try {
+      const res = await fetch('/edit-metadata', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      previewFrame.src = URL.createObjectURL(blob);
+      const props = await extractPropsFromBlob(blob);
+      if (props) {
+        p_name.textContent = currentFile.name;
+        p_size.textContent = `${(currentFile.size/1024).toFixed(1)} KB`;
+        p_title.textContent = props.title;
+        p_author.textContent = props.author;
+        p_subject.textContent = props.subject;
+        p_keywords.textContent = props.keywords;
+        p_created.textContent = props.created;
+        p_modified.textContent = props.modified;
+        p_pages.textContent = props.pages;
+        propsBox.style.display = 'block';
+      }
+      status.textContent = 'Preview ready';
+    } catch (err) {
+      status.textContent = 'Preview error: ' + err.message;
+    }
+  });
+
+  downloadBtn.addEventListener('click', async () => {
+    if (!currentFile) return alert("Please choose a PDF file first.");
+    status.textContent = 'Processing download…';
+    const fd = buildFormData();
+    try {
+      const res = await fetch('/edit-metadata', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'edited-' + currentFile.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      status.textContent = 'Download started';
+    } catch (err) {
+      status.textContent = 'Download error: ' + err.message;
+    }
+  });
+})();
+</script>
+</body>
+</html>
