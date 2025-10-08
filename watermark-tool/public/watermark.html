@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Remove Watermark — EditPDFData</title>
+  <style>
+    :root {
+      --blue: #4a90e2;
+      --purple: #6a5acd;
+      --yellow: #ffdd57;
+      --bg: #f4f7fb;
+      --muted: #6b7280;
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, Arial, sans-serif; background: var(--bg); color:#1f2937; padding:28px; }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    .card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 12px 30px rgba(16,24,40,0.06); }
+    header { display:flex; gap:16px; align-items:center; margin-bottom:12px; }
+    .logo { width:56px; height:56px; border-radius:10px; background: linear-gradient(90deg, var(--blue), var(--purple)); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; }
+    h1 { margin:0; color:var(--blue); font-size:20px; }
+    p.lead { margin:0; color:var(--muted); font-size:14px; }
+
+    .controls { margin-top:18px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    input[type=file] { padding:8px; border-radius:8px; border:1px solid #e6eef8; background:#fff; }
+    .btn {
+      background: linear-gradient(90deg, var(--blue), var(--purple));
+      color:#fff;
+      padding:10px 18px;
+      border-radius:12px;
+      border: none;
+      font-weight:700;
+      cursor:pointer;
+      transition: transform .12s ease, color .12s ease;
+      box-shadow:0 8px 22px rgba(16,24,40,0.08);
+    }
+    /* Keep background same on hover; only text becomes yellow */
+    .btn:hover { color: var(--yellow); transform: translateY(-3px); }
+
+    .muted { color: var(--muted); font-size:13px; }
+    .status { margin-top:14px; font-size:14px; }
+
+    .note { margin-top:12px; color:#374151; font-size:13px; background:#f8fafc; padding:10px; border-radius:8px; border:1px solid #eef6ff; }
+    .small { font-size:12px; color:#6b7280; }
+
+    /* responsive */
+    @media (max-width:640px) {
+      .controls { flex-direction:column; align-items:stretch; }
+      input[type=file] { width:100% }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <header>
+        <div class="logo">EP</div>
+        <div>
+          <h1>Remove Watermark — EditPDFData</h1>
+          <p class="lead">Remove visible text/images watermarks using Ghostscript (best-effort).</p>
+        </div>
+      </header>
+
+      <form id="uploadForm" class="controls" enctype="multipart/form-data">
+        <input id="pdfInput" name="pdf" type="file" accept="application/pdf" required />
+        <button id="cleanBtn" class="btn" type="submit">Upload & Clean</button>
+        <div id="status" class="muted small" style="margin-left:8px"></div>
+      </form>
+
+      <div class="status" id="resultArea" aria-live="polite"></div>
+
+      <div class="note">
+        <strong>Note:</strong> Ghostscript filters can remove text and images (they physically remove content). For some PDFs that use watermarks as background shapes or vectors, results may vary. Always keep a backup of the original file.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('uploadForm');
+    const input = document.getElementById('pdfInput');
+    const status = document.getElementById('status');
+    const resultArea = document.getElementById('resultArea');
+    const cleanBtn = document.getElementById('cleanBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      resultArea.textContent = '';
+      if (!input.files || !input.files.length) { alert('Please choose a PDF file'); return; }
+
+      const file = input.files[0];
+      status.textContent = 'Uploading and processing...';
+      cleanBtn.disabled = true;
+
+      const fd = new FormData();
+      fd.append('pdf', file, file.name);
+
+      try {
+        const res = await fetch('/remove-watermark', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(txt || 'Server error');
+        }
+
+        const blob = await res.blob();
+        // create download link and click
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'cleaned-' + file.name.replace(/[^a-zA-Z0-9.\-_ ]/g, '_');
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+
+        status.textContent = '✅ Done. The cleaned file should download automatically.';
+        resultArea.textContent = 'If the file did not open, try another PDF or check server logs.';
+      } catch (err) {
+        console.error(err);
+        status.textContent = '❌ Error: ' + (err.message || err);
+        resultArea.textContent = 'Server error (see console or server logs).';
+      } finally {
+        cleanBtn.disabled = false;
+      }
+    });
+
+    // Optional: auto-submit when a file is chosen (uncomment if desired)
+    // input.addEventListener('change', () => { if (input.files.length) form.requestSubmit(); });
+  </script>
+</body>
+</html>
